@@ -1,0 +1,58 @@
+# ============================================================================
+# Search Typeahead System — full stack
+# Services: postgres, backend (FastAPI), frontend (React build served by nginx)
+# ============================================================================
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: typeahead-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: typeahead
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Apply the schema on first boot.
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d typeahead"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: typeahead-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/typeahead
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: typeahead
+      CACHE_NODE_NAMES: node1,node2,node3
+      CACHE_TTL_SECONDS: "60"
+      CACHE_VIRTUAL_NODES: "150"
+      BATCH_FLUSH_INTERVAL_SECONDS: "30"
+      BATCH_FLUSH_THRESHOLD: "100"
+      # Seed ~120k rows on first boot. Set to false to skip after the first run.
+      SEED_ON_START: "true"
+      SEED_ROWS: "120000"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: typeahead-frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
